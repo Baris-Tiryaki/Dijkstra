@@ -1,0 +1,293 @@
+<!-- Barış Tiryaki 01.2021 -->
+
+<html>
+ <head>
+  <script>
+function getById(s){return document.getElementById(s);}
+function lg(s){console.log(s);}
+
+var ctx,pi=Math.PI;
+var wid=1920,hei=1080;
+var V=[], E=[], A=[]; //Vertices, Edges, Adjacency Matrix
+
+
+//CONSTANTS
+var LINE_THIN=4, LINE_THICK=20, RADIUS=25, FONT="22px Arial";
+var UNKNOWN_VERTEX_COLOR="#ffff00", CURRENT_VERTEX_COLOR="#ff2222", KNOWN_VERTEX_COLOR="#5555ff";
+
+var NUMBER_OF_VERTICES=-1, DELAY_MS=500;
+
+function init(){
+  var canvas=document.getElementById("xxx");
+  canvas.width=wid;
+  canvas.height=hei;
+
+  ctx=document.getElementById("xxx").getContext("2d");
+  while(  !( typeof(NUMBER_OF_VERTICES)=="number" &&
+          NUMBER_OF_VERTICES>0 && NUMBER_OF_VERTICES<10000 )  ){
+    var prmpt = prompt("How many vertices?","20");
+    if(prmpt==null) return -1;
+    NUMBER_OF_VERTICES = parseInt( prmpt ,10);
+  }
+  addVertices(NUMBER_OF_VERTICES, Math.sqrt(wid*hei/NUMBER_OF_VERTICES)*1.0  );
+  initAdjacencyMatrix();
+  addEdges(5e4, Math.sqrt(wid*hei/NUMBER_OF_VERTICES)*1.5);
+  drawGraph();
+}
+function initAdjacencyMatrix(){
+  A=new Array(V.length);
+  for(var i=0; i<V.length; i++){
+    A[i]=new Int8Array(V.length);
+  }
+}
+function addVertices(N, minSeparation){
+  var j;
+  for(; N>0 ;){
+    var x=wid*(0.04+0.9*Math.random());
+    var y=hei*(0.07+0.84*Math.random());
+    for(j=0; j<V.length; j++){
+      var dx=(V[j].x-x), dy=(V[j].y-y);
+      var dist=Math.hypot(dx,dy);
+      if(dist<minSeparation)break;
+    }
+    if(j==V.length){ //no collision
+      V.push({x:x, y:y, r:RADIUS, edges:[], minDistance: Infinity, color:UNKNOWN_VERTEX_COLOR});
+      N--;
+    }
+    else{ //too close
+      minSeparation *= 0.999999;
+    }
+  }
+}
+function addEdges(tryCount, maxDistance){
+  var i,j;
+  for(i=0; i<tryCount; i++){
+    var p=Math.floor(Math.random()*V.length);
+    var q=Math.floor(Math.random()*V.length);
+    if(p==q) continue;
+    if(A[p][q] != 0)continue;
+    var dist=Math.hypot(V[p].x-V[q].x, V[p].y-V[q].y);
+    if(dist<maxDistance){
+      for(j=0; j<E.length; j++){
+        if(checkIntersection(V[p],V[q], E[j].v1,E[j].v2)==true) break;
+      }
+      if(j==E.length){ //no intersection
+        var edge={v1:V[p], v2:V[q], weight:0, length:dist , thickness:LINE_THIN};
+        edge.weight = Math.round(dist*(0.5+Math.random())*(0.5+Math.random())*(0.5+Math.random())/20);
+        E.push( edge );
+        V[p].edges.push(edge);
+        V[q].edges.push(edge);
+        A[p][q]=1;
+        A[q][p]=1;
+      }
+      else{ //intersection
+
+      }
+    }
+    else{
+      maxDistance *= 1 + 1e-5;
+    }
+  }
+}
+var Known, Unknown; // Vertices with known and unknown "minimum distance"
+function startDijkstra(startingVertexId){
+  if(typeof(startingVertexId)=="string"){
+    startingVertexId = startingVertexId.toUpperCase().charCodeAt(0)-"A".charCodeAt(0);
+  }
+  V[startingVertexId].minDistance = 0;
+  Known=[];
+  Unknown=V.slice(); // create a copy
+  drawGraph();
+  setTimeout(iterate, DELAY_MS);
+}
+
+var state={vertexId:-1, vertex:null, name:"showMinimum"};
+//state.name: "showMinimum", "showEdges", "updateEnds", "updateKnown", "ended"
+function iterate(){
+  if(state.name=="showMinimum"){
+    state.name="showEdges";
+    iteratePart1();
+  }
+  else if(state.name=="showEdges"){
+    state.name="updateEnds";
+    iteratePart2();
+  }
+  else if(state.name=="updateEnds"){
+    state.name="updateKnown";
+    iteratePart3();
+  }
+  else if(state.name=="updateKnown"){
+    state.name="showMinimum";
+    iteratePart4();
+  }
+  drawGraph();
+  if(state.name != "ended") setTimeout(iterate, DELAY_MS);
+}
+
+function iteratePart1(){ //showMinimum
+  //find minimum
+  var value=Infinity, id=-1;
+  for(var i=0; i<Unknown.length; i++){
+    if(value > Unknown[i].minDistance){
+      id=i;
+      value = Unknown[i].minDistance;
+    }
+  }
+  if(value==Infinity) state.name="ended";
+  else{
+    state.vertexId = id;
+    state.vertex = Unknown[id];
+    state.vertex.color=CURRENT_VERTEX_COLOR; //showing minimum
+  }
+}
+function iteratePart2(){ //showEdges
+  var vertex=state.vertex;
+  var edges=vertex.edges;
+  for(var i=0; i<edges.length; i++){
+    var edge=edges[i];
+    var v1=edge.v1, v2=edge.v2;
+    if(v1==vertex) othervertex=v2;
+    else othervertex=v1;
+    if(othervertex.color==UNKNOWN_VERTEX_COLOR)  edge.thickness=LINE_THICK; //showing edges
+  }
+}
+function iteratePart3(){ //updateEnds
+  //update weights
+  var vertex=state.vertex;
+  var edges=vertex.edges;
+  for(var i=0; i<edges.length; i++){
+    var edge=edges[i];
+    var v1=edge.v1, v2=edge.v2;
+    var othervertex;
+    if(v1==vertex) othervertex=v2;
+    else othervertex=v1;
+    if(othervertex.minDistance > vertex.minDistance+edge.weight)
+       othervertex.minDistance = vertex.minDistance+edge.weight;
+  }
+}
+function iteratePart4(){ //updateKnown
+  var vertex=state.vertex;
+  vertex.color=KNOWN_VERTEX_COLOR;
+  Known.push(vertex);
+  Unknown.splice(state.vertexId,1);
+  state.vertex = null;
+  state.vertexId = -1;
+
+  var edges=vertex.edges;
+  for(var i=0; i<edges.length; i++){
+    var edge=edges[i];
+    edge.thickness=LINE_THIN; //hiding edges
+  }
+}
+
+
+function drawGraph(){
+  ctx.clearRect(0,0,wid,hei);
+  for(var i=0; i<E.length;i++){
+    var edge=E[i];
+    ctx.beginPath();
+    ctx.moveTo(edge.v1.x,edge.v1.y);
+    ctx.lineTo(edge.v2.x,edge.v2.y);
+    ctx.strokeStyle="#00000044";
+    ctx.lineWidth=edge.thickness;
+    ctx.stroke();
+  }
+
+
+  ctx.strokeStyle="#000000";
+  ctx.lineWidth=3;
+  for(var i=0; i<V.length;i++){
+    var vertex=V[i];
+    var x=vertex.x, y=vertex.y, r=vertex.r;
+
+    ctx.beginPath();
+    //ctx.moveTo(x+r,y);
+    ctx.arc(x,y,r,0,2*pi);
+    ctx.fillStyle=vertex.color;
+    ctx.stroke();
+    ctx.fill();
+  }
+
+
+  ctx.fillStyle="#000000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = FONT;
+  ctx.beginPath();
+  for(var i=0; i<E.length;i++){
+    var edge=E[i];
+    ctx.fillText(edge.weight, (edge.v1.x+edge.v2.x)/2, (edge.v1.y+edge.v2.y)/2);
+  }
+  for(var i=0; i<V.length;i++){
+    var vertex=V[i];
+    var x=vertex.x, y=vertex.y, r=vertex.r;
+    var str=vertex.minDistance;
+    if(vertex.minDistance==Infinity) str="∞";
+    ctx.textAlign = "left";
+    ctx.fillText("("+str+")", x+r+5,y);
+    ctx.textAlign = "center";
+    str=String.fromCharCode(i+"A".charCodeAt(0));
+    if(i>25) str=i;
+    ctx.fillText(str, x,y);
+  }
+
+}
+
+//Intersection Algorithm: https://www.geeksforgeeks.org/check-if-two-given-line-segments-intersect/
+max=Math.max;
+function onSegment(p, q, r){
+    if (q.x <= max(p.x, r.x) && q.x >= min(p.x, r.x) &&
+        q.y <= max(p.y, r.y) && q.y >= min(p.y, r.y) )
+       return true;
+    return false;
+}
+function orientation(p, q, r){
+    var val = (q.y-p.y) * (r.x-q.x) - (q.x-p.x) * (r.y-q.y);
+
+    if (val == 0) return 0;  // colinear
+    return (val > 0)? 1: 2; // clock or counterclock wise
+}
+function doIntersect(p1, q1, p2, q2){
+    // Find the four orientations needed for general and
+    // special cases
+    var o1 = orientation(p1, q1, p2);
+    var o2 = orientation(p1, q1, q2);
+    var o3 = orientation(p2, q2, p1);
+    var o4 = orientation(p2, q2, q1);
+
+    // General case
+    if (o1 != o2 && o3 != o4)
+        return true;
+
+    // Special Cases
+    // p1, q1 and p2 are colinear and p2 lies on segment p1q1
+    if (o1 == 0 && onSegment(p1, p2, q1)) return true;
+
+    // p1, q1 and q2 are colinear and q2 lies on segment p1q1
+    if (o2 == 0 && onSegment(p1, q2, q1)) return true;
+
+    // p2, q2 and p1 are colinear and p1 lies on segment p2q2
+    if (o3 == 0 && onSegment(p2, p1, q2)) return true;
+
+     // p2, q2 and q1 are colinear and q1 lies on segment p2q2
+    if (o4 == 0 && onSegment(p2, q1, q2)) return true;
+
+    return false; // Doesn't fall in any of the above cases
+}
+function checkIntersection(p1,q1,p2,q2){
+  var r1={x: 0.999*p1.x +0.001*q1.x ,y:  0.999*p1.y +0.001*q1.y};
+  var s1={x: 0.999*q1.x +0.001*p1.x ,y:  0.999*q1.y +0.001*p1.y};
+  var r2={x: 0.999*p2.x +0.001*q2.x ,y:  0.999*p2.y +0.001*q2.y};
+  var s2={x: 0.999*q2.x +0.001*p2.x ,y:  0.999*q2.y +0.001*p2.y};
+  return doIntersect(r1,s1,r2,s2);
+}
+
+  </script>
+ </head>
+ <body onload="init()">
+  <canvas id="xxx" width="16" height="16"
+   style="border:1px solid black; position: fixed; top: 0; left: 0; z-index:-10;">
+  </canvas>
+  <button text="Start" style="font-size: 30px;" onclick="startDijkstra(0); this.style.visibility= 'hidden';">Start</button>
+ </body>
+</html>
